@@ -8,10 +8,11 @@ const cors = require("cors");
 const express = require("express");
 const path = require('path');
 const app = express();
-const port = 8000;
+const port = 5001;
 //imports
 const connectDB = require("./config/db.js");
 const authRoutes = require("./routes/authRoute.js");
+const mlRoutes = require('./routes/MLRoute');
 
 //connect to db:
 connectDB();
@@ -28,6 +29,8 @@ app.use(
 
 //create user:
 app.use("/api/auth", authRoutes);
+//ML route:
+app.use('/api/flood', mlRoutes);
 
 
 app.listen(port, () => {
