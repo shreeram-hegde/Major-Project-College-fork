@@ -48,7 +48,6 @@ export default function Login() {
         navigate("/dashboard"); // Redirect to dashboard
       }
     } catch (error) {
-      console.error(error); // Log full error for debugging
       if (error.response && error.response.data && error.response.data.message) {
         setError(error.response.data.message);
         toast.error(error.response.data.message);

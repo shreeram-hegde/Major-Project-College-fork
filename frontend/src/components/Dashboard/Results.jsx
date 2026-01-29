@@ -2,9 +2,14 @@ import { useState, useRef } from "react";
 import Navbar from "./Navbar";
 
 async function getFloodPath(start, goal) {
+  const token = localStorage.getItem('token'); // Get token from localStorage
+  
   const res = await fetch("/api/flood/path", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      ...(token && { "Authorization": `Bearer ${token}` }) // Only add if token exists
+    },
     body: JSON.stringify({ start, goal }),
   });
 
@@ -13,8 +18,9 @@ async function getFloodPath(start, goal) {
     throw new Error(`API ${res.status}: ${text}`);
   }
 
-  return res.json(); // { path, agents, image, reasoning_text, conclusion }
+  return res.json();
 }
+
 
 export default function Results() {
   const [a, setA] = useState(null); // [x, y]
