@@ -78,7 +78,7 @@ export default function Signup() {
         console.error("Backend error:", error.response.data.message);
       } else {
         setError("Invalid credentials or server error.");
-
+        console.error("Unknown error:", error);
       }
     }
   };
