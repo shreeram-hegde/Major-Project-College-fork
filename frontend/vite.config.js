@@ -11,6 +11,10 @@ export default defineConfig({
         target: 'http://localhost:5001', // Node backend
         changeOrigin: true,
       },
+      '/data': {
+        target: 'http://localhost:5001',
+        changeOrigin: true,
+      },
     },
   },
 })
