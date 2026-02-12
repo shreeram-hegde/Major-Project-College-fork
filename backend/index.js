@@ -13,7 +13,7 @@ const port = 5001;
 const connectDB = require("./config/db.js");
 const authRoutes = require("./routes/authRoute.js");
 const mlRoutes = require('./routes/MLRoute');
-
+const rescueRoutes = require('./routes/rescue');
 //connect to db:
 connectDB();
 
@@ -31,6 +31,7 @@ app.use(
 app.use("/api/auth", authRoutes);
 //ML route:
 app.use('/api/flood', mlRoutes);
+app.use('/api/rescue', rescueRoutes);
 
 
 app.listen(port, () => {
