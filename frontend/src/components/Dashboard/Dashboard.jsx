@@ -1,8 +1,9 @@
 // Dashboard.jsx
 import React, { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, Link } from "react-router-dom"; // Merge these two
 import Navbar from "./Navbar";
 import { Upload } from "lucide-react";
+
 
 const Dashboard = () => {
   const [file, setFile] = useState(null);
@@ -105,6 +106,21 @@ const Dashboard = () => {
               </li>
             </ul>
           </div>
+          
+          {/* navigation*/}
+          <div className="mb-6 bg-emerald-100 border border-emerald-400 p-6 rounded-2xl">
+            <p className="font-bold text-emerald-800 mb-2">🚀 New Rescue System</p>
+            <div className="grid md:grid-cols-2 gap-4">
+              <Link to="/help" className="bg-red-600 text-white p-4 rounded-xl font-semibold text-center hover:bg-red-700">
+                🚨 Victims: Get Help
+              </Link>
+              <Link to="/rescuers" className="bg-emerald-600 text-white p-4 rounded-xl font-semibold text-center hover:bg-emerald-700">
+                🛡️ Rescuers: Dashboard
+              </Link>
+            </div>
+          </div>  {/* ← Properly closes the navigation div */}
+
+
 
           {/* Upload card */}
           <div className="bg-slate-950/80 rounded-2xl border border-slate-800 shadow-[0_10px_25px_rgba(0,0,0,0.45)] p-4 md:p-6 flex flex-col md:flex-row gap-6">

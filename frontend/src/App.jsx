@@ -6,17 +6,21 @@ import Signup from "./components/Auth/Signup";
 import Results from "./components/Dashboard/Results";
 import { Toaster } from "react-hot-toast";
 import Landing from "./components/LandingPage";
+import Help from "./components/pages/Help"; // Capitalized
+import RescuerDashboard from "./components/pages/RescuerDashboard";
 
 function App() {
   return (
     <>
       <Toaster position="top-right" reverseOrder={false} />
       <Routes>
-        <Route path="/" element={<Landing/>} />
+        <Route path="/" element={<Landing />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
-        <Route path="/dashboard/results" element={<Results />} />
+        <Route path="/help" element={<Help />} /> {/* Capitalized */}
+        <Route path="/rescuers" element={<RescuerDashboard />} />
+        <Route path="/dashboard/results" element={<Results />} /> {/* Fixed Syntax */}
       </Routes>
     </>
   );

@@ -1,13 +1,13 @@
-// routes/uploadRoute.js
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const axios = require('axios');
+const { protect } = require('../middleware/authMiddleware'); // Import protect
 
 const router = express.Router();
 
-// Store uploads under backend/uploads/
+// --- Storage Configuration ---
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     const uploadDir = path.join(__dirname, '..', 'uploads');
@@ -17,6 +17,8 @@ const storage = multer.diskStorage({
     cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
+    // Keep original name if possible, or append timestamp to avoid overwrites
+    // For simplicity in this logic, we'll prefix timestamp
     const unique = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
     cb(null, `flood-${unique}${ext}`);
@@ -32,18 +34,11 @@ router.post('/flood-image', upload.single('image'), async (req, res) => {
       return res.status(400).json({ error: 'No image uploaded' });
     }
 
-    const filename = req.file.filename;      // e.g. flood-123.jpg
-    const sourcePath = req.file.path;        // backend/uploads/...
+    const filename = req.file.filename;
+    const sourcePath = req.file.path;
 
-    // Path where your Flask app expects images (adjust if your ML path differs)
-    const mlDataDir = path.join(
-      __dirname,
-      '..',
-      '..',
-      'ML',
-      'ml-api',
-      'data'
-    );
+    // Define ML Data Directory
+    const mlDataDir = path.join(__dirname, '..', '..', 'ML', 'ml-api', 'data');
 
     if (!fs.existsSync(mlDataDir)) {
       fs.mkdirSync(mlDataDir, { recursive: true });
@@ -51,22 +46,16 @@ router.post('/flood-image', upload.single('image'), async (req, res) => {
 
     const destPath = path.join(mlDataDir, filename);
 
-    // Copy uploaded image so Flask can read it from its data/ folder
+    // Copy to ML folder
     fs.copyFileSync(sourcePath, destPath);
 
-    // Tell Flask to build the grid for this image
+    // Trigger Flask processing
     const flaskRes = await axios.post('http://localhost:5000/api/prepare-grid', {
       imagePath: filename,
     });
 
-    // If Flask explicitly says invalid_image, forward that to the client
     if (flaskRes.data && flaskRes.data.error === 'invalid_image') {
-      return res.status(400).json({
-        error: 'invalid_image',
-        message:
-          flaskRes.data.message ||
-          "Invalid Image! Upload image of a geographical location's map",
-      });
+       return res.status(400).json({ error: 'invalid_image', message: flaskRes.data.message });
     }
 
     return res.json({
@@ -75,22 +64,29 @@ router.post('/flood-image', upload.single('image'), async (req, res) => {
     });
   } catch (err) {
     console.error('Upload error:', err.message);
-    if (err.response) {
-      console.error('Flask status:', err.response.status);
-      console.error('Flask data:', err.response.data);
-      // If Flask responded with invalid_image, bubble it up
-      if (err.response.data && err.response.data.error === 'invalid_image') {
-        return res.status(400).json({
-          error: 'invalid_image',
-          message:
-            err.response.data.message ||
-            "Invalid Image! Upload image of a geographical location's map",
-        });
-      }
-    }
-
     return res.status(500).json({ error: 'Upload/ML prepare failed' });
   }
+});
+
+// NEW: DELETE /api/upload/image/:filename
+router.delete('/image/:filename', protect, (req, res) => {
+    try {
+        const filename = req.params.filename;
+        const uploadDir = path.join(__dirname, '..', 'uploads');
+        const mlDataDir = path.join(__dirname, '..', '..', 'ML', 'ml-api', 'data');
+
+        const filePathUpload = path.join(uploadDir, filename);
+        const filePathML = path.join(mlDataDir, filename);
+
+        // Remove from both locations
+        if (fs.existsSync(filePathUpload)) fs.unlinkSync(filePathUpload);
+        if (fs.existsSync(filePathML)) fs.unlinkSync(filePathML);
+
+        res.json({ message: "Map deleted successfully" });
+    } catch (err) {
+        console.error("Delete error:", err);
+        res.status(500).json({ error: "Failed to delete image" });
+    }
 });
 
 module.exports = router;

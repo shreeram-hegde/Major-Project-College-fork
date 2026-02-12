@@ -1,26 +1,38 @@
 import { useState, useRef, useEffect } from "react";
 import Navbar from "./Navbar";
 import toast from "react-hot-toast";
+import { Link } from "react-router-dom"; // Ensure Link is imported
 
 /* ---------------- API CALLS ---------------- */
-async function getFloodPath(start, goal) {
+async function getFloodPath(start, goal, imagePath) {
   const token = localStorage.getItem("token");
 
+  // We now send imagePath along with start/goal so the backend knows which grid to use
   const res = await fetch("/api/flood/path", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       ...(token && { Authorization: `Bearer ${token}` }),
     },
-    body: JSON.stringify({ start, goal }),
+    body: JSON.stringify({ 
+        start, 
+        goal,
+        imagePath // <--- NEW: Required by your updated backend
+    }),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
+    // Try to parse JSON error if possible
+    try {
+        const json = JSON.parse(text);
+        throw new Error(json.message || json.error || `API Error: ${res.status}`);
+    } catch (e) {
+        throw new Error(`API ${res.status}: ${text}`);
+    }
   }
 
-  return res.json(); // { ok, image, agents, reasoning_text, conclusion, legend, ... }
+  return res.json();
 }
 
 async function getLatestFloodImage() {
@@ -29,11 +41,10 @@ async function getLatestFloodImage() {
   });
 
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(`API ${res.status}: ${text}`);
+    throw new Error(`Failed to fetch image`);
   }
 
-  return res.json(); // { imageUrl: "/data/your-latest-image.jpg" }
+  return res.json(); // Expected: { imageUrl: "...", filename: "..." }
 }
 
 /* ---------------- COMPONENT ---------------- */
@@ -48,6 +59,7 @@ export default function Results() {
   const [loading, setLoading] = useState(false);
 
   const [baseImageUrl, setBaseImageUrl] = useState("/sample.jpg");
+  const [currentMapFile, setCurrentMapFile] = useState(null); // <--- Store the filename here
   const [loadingBaseImg, setLoadingBaseImg] = useState(true);
 
   const imgRef = useRef(null);
@@ -60,16 +72,19 @@ export default function Results() {
       try {
         setLoadingBaseImg(true);
         const data = await getLatestFloodImage();
+        
         if (cancelled) return;
+        
         if (data.imageUrl) {
           setBaseImageUrl(data.imageUrl);
+          // Store the filename so we can send it back later
+          setCurrentMapFile(data.filename || data.imageUrl.split('/').pop()); 
         } else {
           setBaseImageUrl("/sample.jpg");
         }
       } catch (err) {
         console.error(err);
-        toast.error("Could not load latest flood image, using sample.jpg");
-        setBaseImageUrl("/sample.jpg");
+        toast.error("Could not load latest flood image");
       } finally {
         if (!cancelled) setLoadingBaseImg(false);
       }
@@ -125,7 +140,8 @@ export default function Results() {
     try {
       setLoading(true);
 
-      const data = await getFloodPath(a, b);
+      // Pass the current map filename to the API
+      const data = await getFloodPath(a, b, currentMapFile);
 
       if (data.ok === false) {
         throw new Error(data.message || "Backend error");
@@ -136,6 +152,8 @@ export default function Results() {
       setReasoningText(data.reasoning_text || "");
       setConclusion(data.conclusion || "");
       setLegend(data.legend || {});
+      
+      toast.success("Path computed successfully!");
     } catch (err) {
       console.error(err);
       toast.error(err.message || "Failed to compute path");
@@ -166,8 +184,25 @@ export default function Results() {
     <>
       <Navbar />
 
+      <div className="max-w-6xl mx-auto px-4 mt-6">
+        <div className="mb-8 p-4 bg-blue-100 border border-blue-300 rounded-xl flex items-center justify-between">
+            <div>
+                <p className="font-bold text-blue-900">Emergency Mode</p>
+                <p className="text-sm text-blue-800">Switch to specialized views for victims or responders.</p>
+            </div>
+            <div className="flex gap-3 text-sm">
+                <Link to="/help" className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 font-semibold shadow-sm">
+                    🚨 Need Help?
+                </Link>
+                <Link to="/rescuers" className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 font-semibold shadow-sm">
+                    🛡️ Rescuer Dash
+                </Link>
+            </div>
+        </div>
+      </div>
+
       <div className="min-h-screen bg-[#050816] text-slate-100 px-6 py-6 box-border">
-        <h2 className="text-2xl font-semibold mb-4">Flood Evacuation Planner</h2>
+        <h2 className="text-2xl font-semibold mb-4">Flood Evacuation Planner (Legacy View)</h2>
 
         <div className="flex flex-wrap gap-6 items-start">
           {/* LEFT */}
@@ -182,22 +217,43 @@ export default function Results() {
                   Loading latest flood image...
                 </div>
               ) : (
-                <div className="w-full">
+                <div className="w-full relative inline-block">
                   <img
                     ref={imgRef}
                     src={selectionSrc}
                     alt="Flood map"
                     onClick={handleImageClick}
-                    className="block w-full max-h-[480px] object-contain cursor-crosshair"
+                    className="block w-full max-h-[600px] object-contain cursor-crosshair"
                   />
+                  {/* Visual Markers for A and B */}
+                   {a && (
+                    <div 
+                        className="absolute w-4 h-4 bg-cyan-400 rounded-full border border-white pointer-events-none"
+                        style={{
+                            left: `${(a[0] / imgRef.current?.naturalWidth) * 100}%`,
+                            top: `${(a[1] / imgRef.current?.naturalHeight) * 100}%`,
+                            transform: 'translate(-50%, -50%)'
+                        }}
+                    />
+                   )}
+                   {b && (
+                    <div 
+                        className="absolute w-4 h-4 bg-purple-400 rounded-full border border-white pointer-events-none"
+                        style={{
+                            left: `${(b[0] / imgRef.current?.naturalWidth) * 100}%`,
+                            top: `${(b[1] / imgRef.current?.naturalHeight) * 100}%`,
+                            transform: 'translate(-50%, -50%)'
+                        }}
+                    />
+                   )}
                 </div>
               )}
 
-              <div className="absolute top-2 left-2 bg-slate-900/80 px-3 py-1 rounded-full text-xs">
+              <div className="absolute top-2 left-2 bg-slate-900/80 px-3 py-1 rounded-full text-xs z-10">
                 <span className="mr-3">
                   A:{" "}
                   {a ? (
-                    <span className="text-emerald-400">
+                    <span className="text-cyan-400">
                       {a[0]}, {a[1]}
                     </span>
                   ) : (
@@ -207,7 +263,7 @@ export default function Results() {
                 <span>
                   B:{" "}
                   {b ? (
-                    <span className="text-orange-400">
+                    <span className="text-purple-400">
                       {b[0]}, {b[1]}
                     </span>
                   ) : (
@@ -268,10 +324,10 @@ export default function Results() {
                 key={idx}
                 className="rounded-lg border border-slate-800 p-3 mb-2 bg-slate-950"
               >
-                <div className="font-semibold">{ag.name}</div>
+                <div className="font-semibold text-emerald-400">{ag.name}</div>
                 <div className="text-xs text-slate-400">{ag.role}</div>
                 <div className="text-xs mt-1">
-                  <b>Effect:</b> {ag.effect}
+                  <b className="text-slate-300">Effect:</b> {ag.effect}
                 </div>
               </div>
             ))}
@@ -283,7 +339,7 @@ export default function Results() {
             )}
 
             {reasoningText && (
-              <div className="mt-3 text-xs text-slate-400 whitespace-pre-wrap border-t border-slate-800 pt-2">
+              <div className="mt-3 text-xs text-slate-400 whitespace-pre-wrap border-t border-slate-800 pt-2 font-mono">
                 {reasoningText}
               </div>
             )}

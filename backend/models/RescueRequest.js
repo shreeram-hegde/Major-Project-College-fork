@@ -1,9 +1,13 @@
-// models/RescueRequest.js
 const mongoose = require('mongoose');
 
 const rescueSchema = new mongoose.Schema({
   userLocation: {
     type: [Number], // [x, y]
+    required: true,
+  },
+  // NEW: Store which map image was used
+  mapFilename: {
+    type: String,
     required: true,
   },
   rescuerGoal: {
@@ -23,10 +27,13 @@ const rescueSchema = new mongoose.Schema({
   },
   assignedTo: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'Rescuer',
+    ref: 'User',
   },
   path: [[Number]], // computed path
   createdAt: { type: Date, default: Date.now },
 });
+
+// Auto-delete requests after 48 hours (172800 seconds)
+rescueSchema.index({ createdAt: 1 }, { expireAfterSeconds: 172800 });
 
 module.exports = mongoose.model('RescueRequest', rescueSchema);

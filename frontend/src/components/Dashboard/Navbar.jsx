@@ -1,7 +1,7 @@
 // Navbar.jsx
 import React from "react";
 import toast from 'react-hot-toast';
-
+import { Link } from "react-router-dom";
 import {useNavigate} from "react-router-dom";
 import { LogOut, Settings, User } from "lucide-react";
 
@@ -28,6 +28,15 @@ const Navbar = () => {
         </div>
         <h1 className="text-xl font-semibold tracking-wide">Dashboard</h1>
       </div>
+
+      
+      <Link to="/help" className="hover:text-red-400 transition p-2">
+        🚨 Help
+      </Link>
+      <Link to="/rescuers" className="hover:text-emerald-400 transition p-2">
+        🛡️ Rescuers
+      </Link>
+
 
       {/* Right Side - Profile */}
       <div className="flex items-center gap-5">
