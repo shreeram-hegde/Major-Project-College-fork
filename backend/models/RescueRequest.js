@@ -5,13 +5,13 @@ const rescueSchema = new mongoose.Schema({
     type: [Number], // [x, y]
     required: true,
   },
-  // NEW: Store which map image was used
   mapFilename: {
     type: String,
     required: true,
   },
+  // Updated to allow multiple goals if needed
   rescuerGoal: {
-    type: [Number], // set when rescuer accepts
+    type: mongoose.Schema.Types.Mixed, // Can be [x,y] or [[x,y], [x,y]]
   },
   details: {
     name: String,
@@ -29,11 +29,13 @@ const rescueSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
   },
-  path: [[Number]], // computed path
+  // Updated to handle multiple paths (3D array: Array of Paths, where each path is Array of Coords)
+  path: {
+    type: mongoose.Schema.Types.Mixed, 
+  },
   createdAt: { type: Date, default: Date.now },
 });
 
-// Auto-delete requests after 48 hours (172800 seconds)
 rescueSchema.index({ createdAt: 1 }, { expireAfterSeconds: 172800 });
 
 module.exports = mongoose.model('RescueRequest', rescueSchema);

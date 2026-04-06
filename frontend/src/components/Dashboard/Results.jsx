@@ -1,13 +1,13 @@
 import { useState, useRef, useEffect } from "react";
 import Navbar from "./Navbar";
 import toast from "react-hot-toast";
-import { Link } from "react-router-dom"; // Ensure Link is imported
+import { Link } from "react-router-dom";
+import { MapPin, Navigation, RotateCcw, Info, List } from "lucide-react";
 
 /* ---------------- API CALLS ---------------- */
-async function getFloodPath(start, goal, imagePath) {
+async function getFloodPath(start, goals, imagePath) {
   const token = localStorage.getItem("token");
 
-  // We now send imagePath along with start/goal so the backend knows which grid to use
   const res = await fetch("/api/flood/path", {
     method: "POST",
     headers: {
@@ -16,14 +16,13 @@ async function getFloodPath(start, goal, imagePath) {
     },
     body: JSON.stringify({ 
         start, 
-        goal,
-        imagePath // <--- NEW: Required by your updated backend
+        goals, // Sending the array we collected
+        imagePath 
     }),
   });
 
   if (!res.ok) {
     const text = await res.text();
-    // Try to parse JSON error if possible
     try {
         const json = JSON.parse(text);
         throw new Error(json.message || json.error || `API Error: ${res.status}`);
@@ -31,26 +30,21 @@ async function getFloodPath(start, goal, imagePath) {
         throw new Error(`API ${res.status}: ${text}`);
     }
   }
-
   return res.json();
 }
 
 async function getLatestFloodImage() {
-  const res = await fetch("/api/flood/latest-image", {
-    method: "GET",
-  });
-
-  if (!res.ok) {
-    throw new Error(`Failed to fetch image`);
-  }
-
-  return res.json(); // Expected: { imageUrl: "...", filename: "..." }
+  const res = await fetch("/api/flood/latest-image");
+  if (!res.ok) throw new Error(`Failed to fetch image`);
+  return res.json();
 }
 
 /* ---------------- COMPONENT ---------------- */
 export default function Results() {
-  const [a, setA] = useState(null);
-  const [b, setB] = useState(null);
+  const [startPoint, setStartPoint] = useState(null);
+  const [goalPoints, setGoalPoints] = useState([]); // Array for multiple bases
+  const [isMultiMode, setIsMultiMode] = useState(false); // Toggle state
+  
   const [imgB64, setImgB64] = useState(null);
   const [agents, setAgents] = useState([]);
   const [reasoningText, setReasoningText] = useState("");
@@ -59,44 +53,29 @@ export default function Results() {
   const [loading, setLoading] = useState(false);
 
   const [baseImageUrl, setBaseImageUrl] = useState("/sample.jpg");
-  const [currentMapFile, setCurrentMapFile] = useState(null); // <--- Store the filename here
+  const [currentMapFile, setCurrentMapFile] = useState(null);
   const [loadingBaseImg, setLoadingBaseImg] = useState(true);
 
   const imgRef = useRef(null);
 
-  /* ---------------- LOAD LATEST MAP IMAGE ---------------- */
   useEffect(() => {
-    let cancelled = false;
-
     async function loadBaseImage() {
       try {
         setLoadingBaseImg(true);
         const data = await getLatestFloodImage();
-        
-        if (cancelled) return;
-        
         if (data.imageUrl) {
           setBaseImageUrl(data.imageUrl);
-          // Store the filename so we can send it back later
           setCurrentMapFile(data.filename || data.imageUrl.split('/').pop()); 
-        } else {
-          setBaseImageUrl("/sample.jpg");
         }
       } catch (err) {
-        console.error(err);
         toast.error("Could not load latest flood image");
       } finally {
-        if (!cancelled) setLoadingBaseImg(false);
+        setLoadingBaseImg(false);
       }
     }
-
     loadBaseImage();
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
-  /* ---------------- IMAGE CLICK ---------------- */
   const handleImageClick = (e) => {
     const img = imgRef.current;
     if (!img) return;
@@ -107,279 +86,150 @@ export default function Results() {
 
     let x = Math.round((e.clientX - rect.left) * scaleX);
     let y = Math.round((e.clientY - rect.top) * scaleY);
-
-    // Clamp to valid pixel range
     x = Math.max(0, Math.min(img.naturalWidth - 1, x));
     y = Math.max(0, Math.min(img.naturalHeight - 1, y));
 
-    if (!a) {
-      setA([x, y]);
-    } else if (!b) {
-      setB([x, y]);
+    if (!startPoint) {
+      setStartPoint([x, y]);
+      toast.success("Start point (A) set");
     } else {
-      // third click resets B and previous path
-      setA([x, y]);
-      setB(null);
-      setImgB64(null);
-      setAgents([]);
-      setReasoningText("");
-      setConclusion("");
-      setLegend({});
+      if (isMultiMode) {
+        setGoalPoints((prev) => [...prev, [x, y]]);
+        toast.success(`Base ${goalPoints.length + 1} added`);
+      } else {
+        setGoalPoints([[x, y]]);
+        toast.success("Goal point (B) set");
+      }
     }
   };
 
-  /* ---------------- COMPUTE ---------------- */
   const handleCompute = async () => {
-    if (!a || !b) {
-      toast.error("Select start (A) and end (B) first");
+    if (!startPoint || goalPoints.length === 0) {
+      toast.error("Select start and at least one goal");
       return;
     }
 
-    if (loading) return;
-
     try {
       setLoading(true);
-
-      // Pass the current map filename to the API
-      const data = await getFloodPath(a, b, currentMapFile);
-
-      if (data.ok === false) {
-        throw new Error(data.message || "Backend error");
-      }
+      const data = await getFloodPath(startPoint, goalPoints, currentMapFile);
+      if (data.ok === false) throw new Error(data.message || "Backend error");
 
       setImgB64(data.image);
       setAgents(data.agents || []);
       setReasoningText(data.reasoning_text || "");
       setConclusion(data.conclusion || "");
       setLegend(data.legend || {});
-      
-      toast.success("Path computed successfully!");
+      toast.success("Multi-path analysis complete!");
     } catch (err) {
-      console.error(err);
       toast.error(err.message || "Failed to compute path");
     } finally {
       setLoading(false);
     }
   };
 
-  /* ---------------- RESET ---------------- */
   const handleReset = () => {
-    setA(null);
-    setB(null);
+    setStartPoint(null);
+    setGoalPoints([]);
     setImgB64(null);
     setAgents([]);
     setReasoningText("");
     setConclusion("");
     setLegend({});
-    setLoading(false);
   };
 
-  // Selection image: always raw latest map
-  const selectionSrc = baseImageUrl;
-  // Result image: AI path (if available)
-  const resultSrc = imgB64 ? `data:image/png;base64,${imgB64}` : null;
-
-  /* ---------------- UI ---------------- */
   return (
     <>
       <Navbar />
-
-      <div className="max-w-6xl mx-auto px-4 mt-6">
-        <div className="mb-8 p-4 bg-blue-100 border border-blue-300 rounded-xl flex items-center justify-between">
-            <div>
-                <p className="font-bold text-blue-900">Emergency Mode</p>
-                <p className="text-sm text-blue-800">Switch to specialized views for victims or responders.</p>
-            </div>
-            <div className="flex gap-3 text-sm">
-                <Link to="/help" className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 font-semibold shadow-sm">
-                    🚨 Need Help?
-                </Link>
-                <Link to="/rescuers" className="bg-emerald-500 text-white px-4 py-2 rounded-lg hover:bg-emerald-600 font-semibold shadow-sm">
-                    🛡️ Rescuer Dash
-                </Link>
-            </div>
-        </div>
-      </div>
-
       <div className="min-h-screen bg-[#050816] text-slate-100 px-6 py-6 box-border">
-        <h2 className="text-2xl font-semibold mb-4">Flood Evacuation Planner (Legacy View)</h2>
+        <div className="max-w-7xl mx-auto flex flex-col lg:flex-row gap-8">
+          
+          {/* LEFT: Map Interaction Area */}
+          <div className="flex-1 space-y-6">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-bold">Rescue Route Planner</h2>
+              
+              {/* TOGGLE SWITCH */}
+              <div className="flex items-center gap-3 bg-slate-900 p-2 rounded-xl border border-slate-800">
+                <span className={`text-xs font-bold ${!isMultiMode ? 'text-emerald-400' : 'text-slate-500'}`}>Single</span>
+                <button 
+                  onClick={() => { setIsMultiMode(!isMultiMode); handleReset(); }}
+                  className={`w-12 h-6 rounded-full relative transition-colors ${isMultiMode ? 'bg-emerald-600' : 'bg-slate-700'}`}
+                >
+                  <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isMultiMode ? 'left-7' : 'left-1'}`} />
+                </button>
+                <span className={`text-xs font-bold ${isMultiMode ? 'text-emerald-400' : 'text-slate-500'}`}>Multi-Base</span>
+              </div>
+            </div>
 
-        <div className="flex flex-wrap gap-6 items-start">
-          {/* LEFT */}
-          <div className="flex-1 min-w-[300px] bg-slate-950/80 rounded-xl p-4 shadow-[0_10px_25px_rgba(0,0,0,0.4)]">
-            <h3 className="text-lg font-medium mb-2">
-              1. Pick start (A) and goal (B)
-            </h3>
-
-            <div className="relative rounded-lg overflow-hidden border border-slate-800">
+            <div className="relative bg-slate-950 rounded-2xl border border-slate-800 overflow-hidden shadow-2xl">
               {loadingBaseImg ? (
-                <div className="flex items-center justify-center h-[260px] text-sm text-slate-400">
-                  Loading latest flood image...
-                </div>
+                <div className="h-[500px] flex items-center justify-center animate-pulse text-slate-500">Loading Map...</div>
               ) : (
-                <div className="w-full relative inline-block">
+                <div className="relative">
                   <img
                     ref={imgRef}
-                    src={selectionSrc}
+                    src={imgB64 ? `data:image/png;base64,${imgB64}` : baseImageUrl}
                     alt="Flood map"
                     onClick={handleImageClick}
-                    className="block w-full max-h-[600px] object-contain cursor-crosshair"
+                    className="block w-full max-h-[70vh] object-contain cursor-crosshair"
                   />
-                  {/* Visual Markers for A and B */}
-                   {a && (
-                    <div 
-                        className="absolute w-4 h-4 bg-cyan-400 rounded-full border border-white pointer-events-none"
-                        style={{
-                            left: `${(a[0] / imgRef.current?.naturalWidth) * 100}%`,
-                            top: `${(a[1] / imgRef.current?.naturalHeight) * 100}%`,
-                            transform: 'translate(-50%, -50%)'
-                        }}
-                    />
-                   )}
-                   {b && (
-                    <div 
-                        className="absolute w-4 h-4 bg-purple-400 rounded-full border border-white pointer-events-none"
-                        style={{
-                            left: `${(b[0] / imgRef.current?.naturalWidth) * 100}%`,
-                            top: `${(b[1] / imgRef.current?.naturalHeight) * 100}%`,
-                            transform: 'translate(-50%, -50%)'
-                        }}
-                    />
-                   )}
+                  
+                  {/* Markers (Only show if no result image yet) */}
+                  {!imgB64 && (
+                    <>
+                      {startPoint && (
+                        <div className="absolute w-4 h-4 bg-red-500 rounded-full border-2 border-white shadow-[0_0_10px_red] animate-bounce"
+                          style={{ left: `${(startPoint[0] / imgRef.current?.naturalWidth) * 100}%`, top: `${(startPoint[1] / imgRef.current?.naturalHeight) * 100}%`, transform: 'translate(-50%, -100%)' }}
+                        />
+                      )}
+                      {goalPoints.map((gp, i) => (
+                        <div key={i} className="absolute w-4 h-4 bg-emerald-500 rounded-full border-2 border-white shadow-[0_0_10px_lime]"
+                          style={{ left: `${(gp[0] / imgRef.current?.naturalWidth) * 100}%`, top: `${(gp[1] / imgRef.current?.naturalHeight) * 100}%`, transform: 'translate(-50%, -50%)' }}
+                        >
+                          <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-[10px] font-bold bg-black px-1 rounded">B{i+1}</span>
+                        </div>
+                      ))}
+                    </>
+                  )}
                 </div>
               )}
-
-              <div className="absolute top-2 left-2 bg-slate-900/80 px-3 py-1 rounded-full text-xs z-10">
-                <span className="mr-3">
-                  A:{" "}
-                  {a ? (
-                    <span className="text-cyan-400">
-                      {a[0]}, {a[1]}
-                    </span>
-                  ) : (
-                    <span className="text-slate-500">not set</span>
-                  )}
-                </span>
-                <span>
-                  B:{" "}
-                  {b ? (
-                    <span className="text-purple-400">
-                      {b[0]}, {b[1]}
-                    </span>
-                  ) : (
-                    <span className="text-slate-500">not set</span>
-                  )}
-                </span>
-              </div>
             </div>
 
-            <div className="mt-3 flex gap-2">
-              <button
-                disabled={loading}
-                onClick={handleCompute}
-                className={`px-4 py-2 rounded-full font-semibold transition
-                ${
-                  loading
-                    ? "bg-slate-600 cursor-not-allowed"
-                    : "bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-600 text-white"
-                }`}
-              >
-                {loading ? "Computing..." : "Compute Path"}
+            <div className="flex gap-4">
+              <button onClick={handleCompute} disabled={loading} className="flex-1 bg-emerald-600 hover:bg-emerald-500 py-4 rounded-xl font-bold flex items-center justify-center gap-2 transition shadow-lg">
+                <Navigation size={20} /> {loading ? "Computing Paths..." : "Analyze Routes"}
               </button>
-
-              <button
-                onClick={handleReset}
-                className="px-4 py-2 rounded-full border border-slate-600 bg-transparent hover:bg-slate-800/60 transition"
-              >
-                Reset
+              <button onClick={handleReset} className="px-6 bg-slate-800 hover:bg-slate-700 rounded-xl transition text-slate-300">
+                <RotateCcw size={20} />
               </button>
             </div>
-
-            {resultSrc && (
-              <div className="mt-4">
-                <h3 className="text-base font-medium mb-2">
-                  2. AI path result
-                </h3>
-                <img
-                  src={resultSrc}
-                  className="rounded-lg border border-slate-800 max-w-full"
-                  alt="AI path"
-                />
-              </div>
-            )}
           </div>
 
-          {/* RIGHT */}
-          <div className="flex-none w-full md:w-80 max-h-[600px] overflow-y-auto bg-slate-950/80 rounded-xl p-4 shadow-[0_10px_25px_rgba(0,0,0,0.4)]">
-            <h3 className="text-lg font-medium mb-2">3. Agent reasoning</h3>
-
-            {agents.length === 0 && (
-              <div className="text-sm text-slate-500 border border-dashed border-slate-700 rounded-lg px-3 py-2">
-                Run a path first to see explanations.
+          {/* RIGHT: Stats & AI Reasoning */}
+          <div className="w-full lg:w-96 space-y-6">
+            <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+              <h3 className="text-sm font-bold text-slate-400 uppercase mb-4 flex items-center gap-2">
+                <Info size={16}/> AI Commander Insights
+              </h3>
+              {conclusion ? (
+                <p className="text-emerald-400 text-sm font-medium mb-4 leading-relaxed">{conclusion}</p>
+              ) : (
+                <p className="text-slate-500 text-sm italic">Set your points on the map to begin rescue simulation.</p>
+              )}
+              
+              <div className="space-y-3">
+                {agents.map((ag, i) => (
+                  <div key={i} className="p-3 bg-slate-950 rounded-lg border border-slate-800">
+                    <p className="text-xs font-bold text-emerald-500">{ag.name} ({ag.role})</p>
+                    <p className="text-[11px] text-slate-400 mt-1">{ag.effect}</p>
+                  </div>
+                ))}
               </div>
-            )}
-
-            {agents.map((ag, idx) => (
-              <div
-                key={idx}
-                className="rounded-lg border border-slate-800 p-3 mb-2 bg-slate-950"
-              >
-                <div className="font-semibold text-emerald-400">{ag.name}</div>
-                <div className="text-xs text-slate-400">{ag.role}</div>
-                <div className="text-xs mt-1">
-                  <b className="text-slate-300">Effect:</b> {ag.effect}
-                </div>
-              </div>
-            ))}
-
-            {conclusion && (
-              <div className="mt-3 text-sm text-emerald-300 border-t border-slate-800 pt-2">
-                <b>Conclusion:</b> {conclusion}
-              </div>
-            )}
+            </div>
 
             {reasoningText && (
-              <div className="mt-3 text-xs text-slate-400 whitespace-pre-wrap border-t border-slate-800 pt-2 font-mono">
+              <div className="bg-black/40 border border-slate-800 rounded-2xl p-4 font-mono text-[10px] text-slate-500 overflow-y-auto max-h-48 whitespace-pre-wrap">
                 {reasoningText}
-              </div>
-            )}
-
-            {/* Legend */}
-            {legend && Object.keys(legend).length > 0 && (
-              <div className="mt-4 text-xs border-t border-slate-800 pt-3">
-                <div className="font-semibold mb-2">Legend</div>
-                <ul className="space-y-1">
-                  {legend.safe_zone && (
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-sm bg-[rgb(50,100,50)]" />
-                      <span>{legend.safe_zone.label}</span>
-                    </li>
-                  )}
-                  {legend.flood_zone && (
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-sm bg-[rgb(0,0,150)]" />
-                      <span>{legend.flood_zone.label}</span>
-                    </li>
-                  )}
-                  {legend.path && (
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-sm bg-[rgb(0,255,0)]" />
-                      <span>{legend.path.label}</span>
-                    </li>
-                  )}
-                  {legend.start && (
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full bg-[rgb(0,255,255)]" />
-                      <span>{legend.start.label}</span>
-                    </li>
-                  )}
-                  {legend.goal && (
-                    <li className="flex items-center gap-2">
-                      <span className="inline-block w-3 h-3 rounded-full bg-[rgb(203,192,255)]" />
-                      <span>{legend.goal.label}</span>
-                    </li>
-                  )}
-                </ul>
               </div>
             )}
           </div>

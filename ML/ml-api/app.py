@@ -68,49 +68,50 @@ def prepare_grid():
 @app.route("/api/path", methods=["POST"])
 def api_path():
     """
-    Compute path using the grid SPECIFIC to the requested image.
-    JSON Input: { "start": [x,y], "goal": [x,y], "imagePath": "flood-123.jpg" }
+    Compute paths to MULTIPLE base stations.
+    JSON Input: { "start": [x,y], "goals": [[x1,y1], [x2,y2]], "imagePath": "flood-123.jpg" }
     """
     try:
         payload = request.get_json(force=True) or {}
         start = payload.get("start")
-        goal = payload.get("goal")
-        image_name = payload.get("imagePath") # <--- CRITICAL: Get specific map name
+        
+        # Backward compatibility: handle both "goal" (single) and "goals" (list)
+        goals = payload.get("goals")
+        if not goals and payload.get("goal"):
+            goals = [payload.get("goal")]
+            
+        image_name = payload.get("imagePath")
 
-        if not (start and goal and image_name):
-             return jsonify({"ok": False, "error": "missing_params", "message": "Requires start, goal, and imagePath"}), 400
+        if not (start and goals and image_name):
+             return jsonify({"ok": False, "error": "missing_params", "message": "Requires start, goals array, and imagePath"}), 400
 
         start_px = (int(start[0]), int(start[1]))
-        goal_px = (int(goal[0]), int(goal[1]))
+        goals_px = [(int(g[0]), int(g[1])) for g in goals]
 
-        # Locate specific image and grid
         image_path = os.path.join(DATA_DIR, image_name)
-        
-        # Construct expected grid path (flood-123.jpg -> flood-123.npy)
         base_name = os.path.splitext(image_name)[0]
         grid_path = os.path.join(DATA_DIR, f"{base_name}.npy")
 
-        # Fallback: If specific grid doesn't exist, try regenerating it
         if not os.path.exists(grid_path):
             if os.path.exists(image_path):
-                print(f"Grid not found for {image_name}, generating now...")
+                from core.parser import jpg_to_npy_strict_blue
                 jpg_to_npy_strict_blue(image_path, grid_path)
             else:
                  return jsonify({"ok": False, "error": "map_not_found", "message": f"Map {image_name} does not exist"}), 404
 
-        # Run Pathfinding
+        # Run Multi-Pathfinding
         result = compute_path(
             start_px=start_px,
-            goal_px=goal_px,
-            grid_npy_path=grid_path,       # Use the specific grid
-            original_image_path=image_path # Use the specific image background
+            goals_px=goals_px,             # Passes a list of goals now
+            grid_npy_path=grid_path, 
+            original_image_path=image_path
         )
 
         img_b64 = encode_image_to_base64(result["image"])
 
         return jsonify({
             "ok": True,
-            "path": result["path"],
+            "paths": result["paths"],       # Array of path dictionaries
             "agents": result["agents"],
             "image": img_b64,
             "reasoning_text": result.get("reasoning_text", ""),
