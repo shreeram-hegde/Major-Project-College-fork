@@ -108,7 +108,7 @@ def mas_refine_cost_grid(start_px, goals_px, grid):
 Emergency zone: {json.dumps(start_desc)}
 Base zones: {len(goals_px)} locations
 Return plain list of (x,y) pairs to penalize (+80 cost). If none, return []."""
-    out1 = call_ollama("gpt-oss:120b-cloud", prompt1) or "[]"
+    out1 = call_ollama("llama3", prompt1) or "[]"
     coords1 = safe_coord_list(parse_coords_from_text(out1), W, H)
     applied1 = 0
     for x, y in coords1[:150]:
@@ -120,7 +120,7 @@ Return plain list of (x,y) pairs to penalize (+80 cost). If none, return []."""
     # Agent 2: Corridor Strategist
     prompt2 = f"""You are an evacuation route planner. Given emergency zone: {json.dumps(start_desc)} and {len(goals_px)} bases,
 return list of up to 300 (x,y) on SAFE land to reward (-0.5 cost)."""
-    out2 = call_ollama("gpt-oss:120b-cloud", prompt2) or "[]"
+    out2 = call_ollama("llama3", prompt2) or "[]"
     coords2 = safe_coord_list(parse_coords_from_text(out2), W, H)
     applied2 = 0
     for x, y in coords2[:300]:
@@ -132,7 +132,7 @@ return list of up to 300 (x,y) on SAFE land to reward (-0.5 cost)."""
     # Agent 3: Human Behavior
     prompt3 = f"""You are a disaster psychologist. Given emergency zone: {json.dumps(start_desc)} and {len(goals_px)} bases,
 return list of (x,y) up to 120 coords that are confusing/panic-prone to penalize (+25 cost)."""
-    out3 = call_ollama("gpt-oss:120b-cloud", prompt3) or "[]"
+    out3 = call_ollama("llama3", prompt3) or "[]"
     coords3 = safe_coord_list(parse_coords_from_text(out3), W, H)
     applied3 = 0
     for x, y in coords3[:120]:
@@ -143,7 +143,7 @@ return list of (x,y) up to 120 coords that are confusing/panic-prone to penalize
 
     # Agent 4: Incident Commander
     prompt4 = f"You are the Incident Commander. We have {len(goals_px)} bases. Summarize approach in one short sentence."
-    out4 = call_ollama("gpt-oss:120b-cloud", prompt4) or "No commander response."
+    out4 = call_ollama("llama3", prompt4) or "No commander response."
     agent_infos.append({"name": "Agent 4", "role": "Commander", "raw_output": out4.strip(), "coords": [], "applied_count": 0, "action": "command", "effect": out4.strip()})
 
     return cost_grid, agent_infos
